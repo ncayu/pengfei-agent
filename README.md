@@ -1,6 +1,7 @@
 ## pengfei-agent 单机
 一个轻量级、使用简单、方便监控单台主机设备性能的脚本
 
+> 项目初衷：解决单台Linux主机CPU、内存使用过高时，触发预警信息，便于运维排查问题
 ## 页面截图
 <img src="./img/Snipaste-01.jpg"></img>
 <img src="./img/Snipaste-02.jpg"></img>
@@ -39,7 +40,7 @@ pengfei/
 ├── monitor.db
 ├── nohup.out
 ├── run.log
-└── send.lo
+└── send.log
 ```
 
 ## 配置文件
