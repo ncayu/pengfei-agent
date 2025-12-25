@@ -39,7 +39,7 @@ pengfei/
 ├── monitor.db
 ├── nohup.out
 ├── run.log
-└── send.lo
+└── send.log
 ```
 
 ## 配置文件
