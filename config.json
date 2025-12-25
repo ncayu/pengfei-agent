@@ -6,7 +6,7 @@
   "run_log_path": "run.log",
   "send_log_path": "send.log",
   "alert": {
-    "enable": false,
+    "enable": true,
     "enable_recovery": true,
     "cpu_threshold": 80,
     "mem_threshold": 80,
