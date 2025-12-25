@@ -31,6 +31,16 @@ nohup ./agent_linux 2>&1 &
 [RUN] 2025/12/25 17:42:08 [17:42:08] 数据采集完成 (Top20进程已更新)...
 [RUN] 2025/12/25 17:42:23 [17:42:23] 数据采集完成 (Top20进程已更新)...
 ```
+文件结构
+```bash
+pengfei/
+├── agent_linux
+├── config.json
+├── monitor.db
+├── nohup.out
+├── run.log
+└── send.lo
+```
 
 ## 配置文件
 ```json
