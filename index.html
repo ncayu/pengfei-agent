@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pengfei监控探针</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { background-color: #f3f4f6; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .card { background: white; border-radius: 8px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .sort-icon::after { content: '↕'; margin-left: 4px; opacity: 0.3; font-size: 0.8em; }
+        .sort-asc::after { content: '↑'; opacity: 1; }
+        .sort-desc::after { content: '↓'; opacity: 1; }
+        /* Modal transitions */
+        .modal { transition: opacity 0.25s ease; }
+        body.modal-active { overflow-x: hidden; overflow-y: hidden !important; }
+        /* Custom Scrollbar for tables */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="p-6">
+
+<!-- 顶部控制栏 -->
+<div class="flex flex-col md:flex-row justify-between items-center mb-6 bg-white p-4 rounded-lg shadow-sm border border-gray-100">
+    <div>
+        <div class="flex items-center gap-3">
+            <!-- 动态标题 -->
+            <h1 id="header-title" class="text-2xl font-bold text-gray-800">Pengfei监控探针</h1>
+            <span class="text-xs font-medium text-white bg-green-500 px-2 py-0.5 rounded-full flex items-center">
+                    <span class="w-1.5 h-1.5 bg-white rounded-full mr-1 animate-pulse"></span> Running
+                </span>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-x-6 gap-y-2 mt-2 text-sm text-gray-600">
+            <div class="flex items-center gap-1.5 bg-gray-50 px-2 py-1 rounded border border-gray-200">
+                <span class="text-gray-500">IP:</span>
+                <span id="header-ip" class="font-bold text-gray-800 font-mono">Loading...</span>
+            </div>
+            <div class="flex items-center gap-1.5 bg-gray-50 px-2 py-1 rounded border border-gray-200">
+                <span class="text-gray-500">运行时间:</span>
+                <span id="header-uptime" class="font-bold text-gray-800 font-mono">--</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="flex items-center gap-4 mt-4 md:mt-0">
+        <!-- 设置按钮 -->
+        <button onclick="openSettings()" class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+            配置
+        </button>
+
+        <div class="flex items-center bg-gray-50 rounded-lg p-1 border border-gray-200">
+            <select id="timeRange" onchange="changeTimeRange()" class="bg-white border-0 text-gray-700 text-sm rounded shadow-sm focus:ring-0 cursor-pointer py-1 pl-2 pr-8">
+                <option value="300" selected>最近 5 分钟</option>
+                <option value="900">最近 15 分钟</option>
+                <option value="1800">最近 30 分钟</option>
+                <option value="3600">最近 1 小时</option>
+                <option value="21600">最近 6 小时</option>
+                <option value="86400">最近 24 小时</option>
+                <option value="172800">最近 2 天</option>
+                <option value="259200">最近 3 天</option>
+                <option value="432000">最近 5 天</option>
+                <option value="604800">最近 7 天</option>
+                <option value="1296000">最近 15 天</option>
+                <option value="2592000">最近 30 天</option>
+            </select>
+        </div>
+    </div>
+</div>
+
+<!-- 配置弹窗 (Modal) -->
+<div id="settingsModal" class="modal opacity-0 pointer-events-none fixed w-full h-full top-0 left-0 flex items-center justify-center z-50">
+    <div class="modal-overlay absolute w-full h-full bg-gray-900 opacity-50"></div>
+
+    <div class="modal-container bg-white w-11/12 md:max-w-3xl mx-auto rounded shadow-lg z-50 overflow-y-auto max-h-[90vh]">
+        <div class="modal-content py-4 text-left px-6">
+            <!-- Title -->
+            <div class="flex justify-between items-center pb-3 border-b">
+                <p class="text-2xl font-bold">系统配置</p>
+                <div class="modal-close cursor-pointer z-50" onclick="closeSettings()">
+                    <svg class="fill-current text-black" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18"><path d="M14.53 4.53l-1.06-1.06L9 7.94 4.53 3.47 3.47 4.53 7.94 9l-4.47 4.47 1.06 1.06L9 10.06l4.47 4.47 1.06-1.06L10.06 9z"></path></svg>
+                </div>
+            </div>
+
+            <!-- Body -->
+            <form id="configForm" class="mt-4 space-y-6">
+                <!-- 基础设置 -->
+                <div>
+                    <h4 class="text-lg font-semibold text-gray-700 mb-2 border-l-4 border-blue-500 pl-2">基础设置</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="md:col-span-2">
+                            <label class="block text-sm font-medium text-gray-700">应用名称 (显示在标题栏)</label>
+                            <input type="text" id="cfg-app-name" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2" placeholder="Pengfei监控探针">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">数据保留天数</label>
+                            <input type="number" id="cfg-retention" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2" placeholder="30">
+                        </div>
+                        <div class="flex items-center pt-6">
+                            <input id="cfg-alert-enable" type="checkbox" class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded">
+                            <label for="cfg-alert-enable" class="ml-2 text-sm font-medium text-gray-900">开启报警功能</label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 报警阈值设置 -->
+                <div>
+                    <h4 class="text-lg font-semibold text-gray-700 mb-2 border-l-4 border-yellow-500 pl-2">报警阈值</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">CPU 阈值 (%)</label>
+                            <input type="number" id="cfg-cpu" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2" placeholder="80">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">内存 阈值 (%)</label>
+                            <input type="number" id="cfg-mem" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2" placeholder="80">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">硬盘 阈值 (%)</label>
+                            <input type="number" id="cfg-disk" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2" placeholder="85">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">冷却时间 (秒)</label>
+                            <input type="number" id="cfg-cooldown" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm border p-2" placeholder="300">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 高级设置 -->
+                <div>
+                    <h4 class="text-lg font-semibold text-gray-700 mb-2 border-l-4 border-purple-500 pl-2">通知模版</h4>
+                    <div class="flex items-center mb-4">
+                        <input id="cfg-alert-recovery" type="checkbox" class="w-4 h-4 text-purple-600 bg-gray-100 border-gray-300 rounded">
+                        <label for="cfg-alert-recovery" class="ml-2 text-sm font-medium text-gray-900">开启恢复通知 (低于阈值时发送)</label>
+                    </div>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">报警触发模版 <span class="text-xs text-gray-400 font-normal ml-2">可用变量: {{hostname}}, {{time}}, {{type}}, {{value}}, {{threshold}}</span></label>
+                            <textarea id="cfg-tpl-trigger" rows="3" class="block w-full rounded-md border-gray-300 shadow-sm border p-2 text-sm font-mono"></textarea>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">报警恢复模版</label>
+                            <textarea id="cfg-tpl-recover" rows="3" class="block w-full rounded-md border-gray-300 shadow-sm border p-2 text-sm font-mono"></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 通知渠道设置 -->
+                <div>
+                    <h4 class="text-lg font-semibold text-gray-700 mb-2 border-l-4 border-green-500 pl-2">通知渠道状态</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-600">
+                        <div class="flex items-center">
+                            <span id="status-email" class="w-3 h-3 rounded-full bg-gray-300 mr-2"></span> 邮件通知
+                        </div>
+                        <div class="flex items-center">
+                            <span id="status-ding" class="w-3 h-3 rounded-full bg-gray-300 mr-2"></span> 钉钉机器人
+                        </div>
+                        <div class="flex items-center">
+                            <span id="status-feishu" class="w-3 h-3 rounded-full bg-gray-300 mr-2"></span> 飞书机器人
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-400 mt-2">* 通知渠道的详细参数(SMTP/Token)请在 config.json 中修改并重启服务。</p>
+                </div>
+            </form>
+
+            <!-- Footer -->
+            <div class="flex justify-end pt-4 border-t mt-6">
+                <button onclick="closeSettings()" class="px-4 py-2 bg-transparent p-3 rounded-lg text-indigo-500 hover:bg-gray-100 hover:text-indigo-400 mr-2">取消</button>
+                <button onclick="saveSettings()" class="px-4 py-2 bg-blue-600 p-3 rounded-lg text-white hover:bg-blue-500">保存配置</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 设备基本信息表 -->
+<div class="card mb-6">
+    <h3 class="text-gray-700 font-bold mb-4 border-b pb-2">设备基本信息</h3>
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm text-left text-gray-600">
+            <tbody class="divide-y divide-gray-100">
+            <tr class="bg-white">
+                <td class="px-4 py-2 font-semibold bg-gray-50 w-1/6">Hostname</td>
+                <td class="px-4 py-2 w-1/3" id="info-hostname">--</td>
+                <td class="px-4 py-2 font-semibold bg-gray-50 w-1/6">OS</td>
+                <td class="px-4 py-2 w-1/3" id="info-os">--</td>
+            </tr>
+            <tr class="bg-white">
+                <td class="px-4 py-2 font-semibold bg-gray-50">Architecture</td>
+                <td class="px-4 py-2" id="info-arch">--</td>
+                <td class="px-4 py-2 font-semibold bg-gray-50">Process Count</td>
+                <td class="px-4 py-2" id="info-proc-count">--</td>
+            </tr>
+            <tr class="bg-white">
+                <td class="px-4 py-2 font-semibold bg-gray-50">CPU Model</td>
+                <td class="px-4 py-2" id="info-cpu-model">--</td>
+                <td class="px-4 py-2 font-semibold bg-gray-50">Physical Cores</td>
+                <td class="px-4 py-2" id="info-cpu-cores">--</td>
+            </tr>
+            <tr class="bg-white">
+                <td class="px-4 py-2 font-semibold bg-gray-50">Memory Total</td>
+                <td class="px-4 py-2" colspan="3"><span id="info-mem-total">--</span> MB</td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- 核心指标卡片 & 图表 -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+    <div class="card border-l-4 border-blue-500">
+        <div class="flex justify-between items-center">
+            <h3 class="text-gray-500 text-sm uppercase">CPU 使用率</h3>
+            <span id="label-cpu-cores" class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">-- Cores</span>
+        </div>
+        <div class="mt-4 flex items-end">
+            <span id="cpu-percent" class="text-4xl font-bold text-gray-800">0%</span>
+        </div>
+        <div class="w-full bg-gray-200 rounded-full h-2.5 mt-2">
+            <div id="cpu-bar" class="bg-blue-600 h-2.5 rounded-full" style="width: 0%"></div>
+        </div>
+        <div class="mt-2 text-xs text-gray-500">
+            Wait: <span id="cpu-wait">0%</span> | Sys: <span id="cpu-sys">0%</span>
+        </div>
+    </div>
+
+    <div class="card border-l-4 border-purple-500">
+        <h3 class="text-gray-500 text-sm uppercase">内存使用</h3>
+        <div class="mt-4 flex items-end">
+            <span id="mem-percent" class="text-4xl font-bold text-gray-800">0%</span>
+            <span class="text-gray-400 ml-2 mb-1 text-sm"><span id="mem-used">0</span> / <span id="mem-total">0</span> MB</span>
+        </div>
+        <div class="w-full bg-gray-200 rounded-full h-2.5 mt-2">
+            <div id="mem-bar" class="bg-purple-600 h-2.5 rounded-full" style="width: 0%"></div>
+        </div>
+        <div class="mt-2 text-xs text-gray-500">
+            Cached: <span id="mem-cached">0</span> MB | Swap: <span id="swap-percent">0%</span>
+        </div>
+    </div>
+
+    <div class="card border-l-4 border-yellow-500">
+        <h3 class="text-gray-500 text-sm uppercase">系统负载 (Load Avg)</h3>
+        <div class="mt-4 grid grid-cols-3 gap-2 text-center">
+            <div>
+                <div id="load-1" class="text-xl font-bold text-gray-800">0.00</div>
+                <div class="text-xs text-gray-400">1 min</div>
+            </div>
+            <div>
+                <div id="load-5" class="text-xl font-bold text-gray-800">0.00</div>
+                <div class="text-xs text-gray-400">5 min</div>
+            </div>
+            <div>
+                <div id="load-15" class="text-xl font-bold text-gray-800">0.00</div>
+                <div class="text-xs text-gray-400">15 min</div>
+            </div>
+        </div>
+        <div class="mt-3 text-xs text-gray-500 text-center">
+            <span class="text-gray-400">System Load Status</span>
+        </div>
+    </div>
+
+    <div class="card border-l-4 border-green-500">
+        <h3 class="text-gray-500 text-sm uppercase">网络实时流量</h3>
+        <div class="mt-4">
+            <div class="flex justify-between items-center mb-2">
+                <span class="text-sm text-gray-600">↓ 下载</span>
+                <span id="net-rx" class="font-bold text-green-600">0 KB/s</span>
+            </div>
+            <div class="flex justify-between items-center">
+                <span class="text-sm text-gray-600">↑ 上传</span>
+                <span id="net-tx" class="font-bold text-blue-600">0 KB/s</span>
+            </div>
+        </div>
+        <div class="mt-2 text-xs text-gray-500 border-t pt-2">
+            TCP Conn: <span id="tcp-estab" class="font-bold">0</span> (Estab)
+        </div>
+    </div>
+</div>
+
+<!-- 图表区域 -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <div class="card">
+        <h3 class="text-gray-700 font-bold mb-4">CPU & 内存趋势</h3>
+        <div class="relative h-60 w-full">
+            <canvas id="trendChart"></canvas>
+        </div>
+    </div>
+    <div class="card">
+        <h3 class="text-gray-700 font-bold mb-4">磁盘 IO 读写速率</h3>
+        <div class="relative h-60 w-full">
+            <canvas id="ioChart"></canvas>
+        </div>
+    </div>
+    <div class="card lg:col-span-2">
+        <h3 class="text-gray-700 font-bold mb-4">分区磁盘使用率趋势 (%)</h3>
+        <div class="relative h-60 w-full">
+            <canvas id="diskUsageChart"></canvas>
+        </div>
+    </div>
+    <div class="card">
+        <h3 class="text-gray-700 font-bold mb-4">网络流量趋势 (Download/Upload)</h3>
+        <div class="relative h-60 w-full">
+            <canvas id="netTrendChart"></canvas>
+        </div>
+    </div>
+    <div class="card">
+        <h3 class="text-gray-700 font-bold mb-4">网络上传流量 (Upload Histogram)</h3>
+        <div class="relative h-60 w-full">
+            <canvas id="netUploadBarChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+    <div class="card lg:col-span-1">
+        <h3 class="text-gray-700 font-bold mb-4">磁盘分区详情</h3>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm text-left text-gray-500">
+                <thead class="text-xs text-gray-700 uppercase bg-gray-50">
+                <tr>
+                    <th class="px-2 py-2">Path</th>
+                    <th class="px-2 py-2">Size</th>
+                    <th class="px-2 py-2">Use%</th>
+                </tr>
+                </thead>
+                <tbody id="disk-table-body"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card lg:col-span-2">
+        <h3 class="text-gray-700 font-bold mb-4">监听端口 (Top Active)</h3>
+        <div class="overflow-x-auto h-64 overflow-y-scroll">
+            <table class="w-full text-sm text-left text-gray-500">
+                <thead class="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0">
+                <tr>
+                    <th class="px-4 py-2 cursor-pointer hover:bg-gray-100 sort-icon" id="th-port" onclick="toggleSort('port')">Port</th>
+                    <th class="px-4 py-2">PID</th>
+                    <th class="px-4 py-2">Process</th>
+                    <th class="px-4 py-2 cursor-pointer hover:bg-gray-100 sort-icon" id="th-cpu" onclick="toggleSort('cpu')">CPU%</th>
+                    <th class="px-4 py-2 cursor-pointer hover:bg-gray-100 sort-icon" id="th-mem" onclick="toggleSort('mem')">Mem%</th>
+                </tr>
+                </thead>
+                <tbody id="port-table-body"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- 进程 CPU 趋势图 -->
+<div class="card mb-6">
+    <div class="flex justify-between items-center mb-4">
+        <h3 class="text-gray-700 font-bold">活跃进程 CPU 趋势 (Top 10)</h3>
+        <span class="text-xs text-gray-400">显示当前时间段内 CPU 占用最高的10个进程</span>
+    </div>
+    <div class="relative h-72 w-full">
+        <canvas id="processTrendChart"></canvas>
+    </div>
+</div>
+
+<!-- 新增：进程 内存 趋势图 -->
+<div class="card mb-6">
+    <div class="flex justify-between items-center mb-4">
+        <h3 class="text-gray-700 font-bold">活跃进程内存趋势 (Top 10)</h3>
+        <span class="text-xs text-gray-400">显示当前时间段内内存占用最高的10个进程</span>
+    </div>
+    <div class="relative h-72 w-full">
+        <canvas id="processMemTrendChart"></canvas>
+    </div>
+</div>
+
+<!-- Top 20 进程表格 -->
+<div class="card mb-6">
+    <h3 class="text-gray-700 font-bold mb-4">Top 20 进程 (CPU/内存)</h3>
+    <div class="overflow-x-auto h-96 overflow-y-scroll">
+        <table class="w-full text-sm text-left text-gray-500">
+            <thead class="text-xs text-gray-700 uppercase bg-gray-50 sticky top-0 shadow-sm z-10">
+            <tr>
+                <th class="px-4 py-3">PID</th>
+                <th class="px-4 py-3">User</th>
+                <th class="px-4 py-3">Name</th>
+                <th class="px-4 py-3">Status</th>
+                <th class="px-4 py-3 text-right cursor-pointer hover:bg-gray-100 sort-icon" id="th-proc-cpu" onclick="toggleProcessSort('cpu')">CPU%</th>
+                <th class="px-4 py-3 text-right cursor-pointer hover:bg-gray-100 sort-icon" id="th-proc-mem" onclick="toggleProcessSort('mem')">Mem%</th>
+                <th class="px-4 py-3 text-right">RSS (MB)</th>
+            </tr>
+            </thead>
+            <tbody id="proc-table-body" class="divide-y divide-gray-100">
+            <!-- 由 JS 填充 -->
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    // --- 初始化: 页面加载时读取配置并更新标题 ---
+    function initPage() {
+        document.getElementById('header-ip').textContent = window.location.hostname;
+
+        fetch('/api/config')
+            .then(res => res.json())
+            .then(data => {
+                // 更新页面标题和 Header 标题
+                if (data.app_name) {
+                    document.title = data.app_name;
+                    document.getElementById('header-title').textContent = data.app_name;
+                }
+            })
+            .catch(err => console.error("Failed to fetch initial config:", err));
+    }
+
+    // --- Config & Modal Logic ---
+    let currentConfig = null;
+
+    function openSettings() {
+        fetch('/api/config')
+            .then(res => res.json())
+            .then(data => {
+                currentConfig = data;
+                // 填充表单
+                document.getElementById('cfg-app-name').value = data.app_name || 'Pengfei监控探针'; // New
+                document.getElementById('cfg-retention').value = data.retention_days || 30; // New
+
+                document.getElementById('cfg-alert-enable').checked = data.alert.enable;
+                document.getElementById('cfg-alert-recovery').checked = data.alert.enable_recovery;
+                document.getElementById('cfg-cpu').value = data.alert.cpu_threshold;
+                document.getElementById('cfg-mem').value = data.alert.mem_threshold;
+                document.getElementById('cfg-disk').value = data.alert.disk_threshold;
+                document.getElementById('cfg-cooldown').value = data.alert.cooldown_seconds;
+                document.getElementById('cfg-tpl-trigger').value = data.alert.trigger_template || '';
+                document.getElementById('cfg-tpl-recover').value = data.alert.recover_template || '';
+
+                updateNotifyStatus('status-email', data.notify.enable_email);
+                updateNotifyStatus('status-ding', data.notify.enable_dingtalk);
+                updateNotifyStatus('status-feishu', data.notify.enable_feishu);
+
+                const modal = document.getElementById('settingsModal');
+                modal.classList.remove('opacity-0', 'pointer-events-none');
+                document.body.classList.add('modal-active');
+            });
+    }
+
+    function closeSettings() {
+        const modal = document.getElementById('settingsModal');
+        modal.classList.add('opacity-0', 'pointer-events-none');
+        document.body.classList.remove('modal-active');
+    }
+
+    function saveSettings() {
+        if (!currentConfig) return;
+
+        // 更新基础配置
+        currentConfig.app_name = document.getElementById('cfg-app-name').value;
+        currentConfig.retention_days = parseInt(document.getElementById('cfg-retention').value);
+
+        // 更新 Alert 配置
+        currentConfig.alert.enable = document.getElementById('cfg-alert-enable').checked;
+        currentConfig.alert.enable_recovery = document.getElementById('cfg-alert-recovery').checked;
+        currentConfig.alert.cpu_threshold = parseFloat(document.getElementById('cfg-cpu').value);
+        currentConfig.alert.mem_threshold = parseFloat(document.getElementById('cfg-mem').value);
+        currentConfig.alert.disk_threshold = parseFloat(document.getElementById('cfg-disk').value);
+        currentConfig.alert.cooldown_seconds = parseInt(document.getElementById('cfg-cooldown').value);
+        currentConfig.alert.trigger_template = document.getElementById('cfg-tpl-trigger').value;
+        currentConfig.alert.recover_template = document.getElementById('cfg-tpl-recover').value;
+
+        fetch('/api/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(currentConfig)
+        })
+            .then(res => {
+                if (res.ok) {
+                    alert('配置已保存 (可能需要刷新页面生效)');
+                    // 立即更新当前页面标题
+                    document.title = currentConfig.app_name;
+                    document.getElementById('header-title').textContent = currentConfig.app_name;
+                    closeSettings();
+                } else {
+                    alert('保存失败，请检查服务器日志');
+                }
+            });
+    }
+
+    function updateNotifyStatus(id, enabled) {
+        const el = document.getElementById(id);
+        if (enabled) {
+            el.classList.remove('bg-gray-300');
+            el.classList.add('bg-green-500');
+        } else {
+            el.classList.remove('bg-green-500');
+            el.classList.add('bg-gray-300');
+        }
+    }
+
+    // --- Core Monitoring Logic ---
+    let currentDurationSeconds = 300;
+    let latestMetricsData = null;
+    let sortState = { field: 'cpu', direction: 'desc' };
+    let processSortState = { field: 'cpu', direction: 'desc' }; // 新增进程排序状态
+
+    Chart.defaults.font.family = "'Segoe UI', 'Helvetica', 'Arial', sans-serif";
+    Chart.defaults.color = '#6b7280';
+
+    function createGradient(ctx, colorStart, colorEnd) {
+        const gradient = ctx.createLinearGradient(0, 0, 0, 300);
+        gradient.addColorStop(0, colorStart);
+        gradient.addColorStop(1, colorEnd);
+        return gradient;
+    }
+
+    // 生成固定颜色函数
+    function getColor(str) {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            hash = str.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        const c = (hash & 0x00FFFFFF).toString(16).toUpperCase();
+        return '#' + "00000".substring(0, 6 - c.length) + c;
+    }
+
+    const commonOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+            legend: { position: 'top', align: 'end', labels: { usePointStyle: true, boxWidth: 8 } },
+            tooltip: { backgroundColor: 'rgba(17, 24, 39, 0.9)', padding: 10, cornerRadius: 4 }
+        },
+        scales: {
+            x: { grid: { display: false }, ticks: { maxTicksLimit: 8 } },
+            y: { grid: { borderDash: [4, 4], color: '#e5e7eb' }, beginAtZero: true }
+        },
+        animation: false
+    };
+
+    const ctxTrend = document.getElementById('trendChart').getContext('2d');
+    const trendChart = new Chart(ctxTrend, {
+        type: 'line',
+        data: { labels: [], datasets: [{ label: 'CPU %', borderColor: '#3b82f6', backgroundColor: createGradient(ctxTrend, 'rgba(59, 130, 246, 0.4)', 'rgba(59, 130, 246, 0.0)'), borderWidth: 2, data: [], tension: 0.4, fill: true, pointRadius: 0 }, { label: 'Mem %', borderColor: '#a855f7', backgroundColor: createGradient(ctxTrend, 'rgba(168, 85, 247, 0.4)', 'rgba(168, 85, 247, 0.0)'), borderWidth: 2, data: [], tension: 0.4, fill: true, pointRadius: 0 }] },
+        options: { ...commonOptions, scales: { ...commonOptions.scales, y: { min: 0, max: 100 } } }
+    });
+
+    const ctxIO = document.getElementById('ioChart').getContext('2d');
+    const ioChart = new Chart(ctxIO, {
+        type: 'line',
+        data: { labels: [], datasets: [{ label: 'Read (KB/s)', borderColor: '#10b981', backgroundColor: createGradient(ctxIO, 'rgba(16, 185, 129, 0.4)', 'rgba(16, 185, 129, 0.0)'), borderWidth: 2, data: [], fill: true, tension: 0.4, pointRadius: 0 }, { label: 'Write (KB/s)', borderColor: '#ef4444', backgroundColor: createGradient(ctxIO, 'rgba(239, 68, 68, 0.4)', 'rgba(239, 68, 68, 0.0)'), borderWidth: 2, data: [], fill: true, tension: 0.4, pointRadius: 0 }] },
+        options: commonOptions
+    });
+
+    const ctxDiskUsage = document.getElementById('diskUsageChart').getContext('2d');
+    const diskUsageChart = new Chart(ctxDiskUsage, {
+        type: 'line',
+        data: { labels: [], datasets: [] },
+        options: { ...commonOptions, scales: { ...commonOptions.scales, y: { min: 0, max: 100 } } }
+    });
+
+    const ctxNetTrend = document.getElementById('netTrendChart').getContext('2d');
+    const netTrendChart = new Chart(ctxNetTrend, {
+        type: 'line',
+        data: { labels: [], datasets: [{ label: 'Download (KB/s)', borderColor: '#10b981', backgroundColor: createGradient(ctxNetTrend, 'rgba(16, 185, 129, 0.4)', 'rgba(16, 185, 129, 0.0)'), borderWidth: 2, data: [], fill: true, tension: 0.4, pointRadius: 0 }, { label: 'Upload (KB/s)', borderColor: '#6366f1', backgroundColor: createGradient(ctxNetTrend, 'rgba(99, 102, 241, 0.4)', 'rgba(99, 102, 241, 0.0)'), borderWidth: 2, data: [], fill: true, tension: 0.4, pointRadius: 0 }] },
+        options: commonOptions
+    });
+
+    const ctxNetBar = document.getElementById('netUploadBarChart').getContext('2d');
+    const netUploadBarChart = new Chart(ctxNetBar, {
+        type: 'bar',
+        data: { labels: [], datasets: [{ label: 'Upload (KB/s)', backgroundColor: '#6366f1', data: [], barPercentage: 0.6 }] },
+        options: commonOptions
+    });
+
+    // 进程 CPU 趋势图
+    const ctxProcess = document.getElementById('processTrendChart').getContext('2d');
+    const processTrendChart = new Chart(ctxProcess, {
+        type: 'line',
+        data: { labels: [], datasets: [] },
+        options: {
+            ...commonOptions,
+            plugins: {
+                ...commonOptions.plugins,
+                legend: { ...commonOptions.plugins.legend, labels: { boxWidth: 8, font: { size: 10 } } }
+            },
+            elements: { line: { tension: 0.3 } }
+        }
+    });
+
+    // 新增：进程 内存 趋势图
+    const ctxProcessMem = document.getElementById('processMemTrendChart').getContext('2d');
+    const processMemTrendChart = new Chart(ctxProcessMem, {
+        type: 'line',
+        data: { labels: [], datasets: [] },
+        options: {
+            ...commonOptions,
+            plugins: {
+                ...commonOptions.plugins,
+                legend: { ...commonOptions.plugins.legend, labels: { boxWidth: 8, font: { size: 10 } } }
+            },
+            elements: { line: { tension: 0.3 } }
+        }
+    });
+
+    const diskColors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+
+    function toggleSort(field) {
+        if (sortState.field === field) { sortState.direction = sortState.direction === 'desc' ? 'asc' : 'desc'; } else { sortState.field = field; sortState.direction = 'desc'; }
+        renderPortsTable();
+    }
+
+    function renderPortsTable() {
+        if (!latestMetricsData || !latestMetricsData.listening_ports) return;
+        const ports = [...latestMetricsData.listening_ports];
+        ports.sort((a, b) => {
+            let valA, valB;
+            if (sortState.field === 'port') { valA = a.port; valB = b.port; }
+            else if (sortState.field === 'cpu') { valA = a.cpu_percent; valB = b.cpu_percent; }
+            else if (sortState.field === 'mem') { valA = a.mem_percent; valB = b.mem_percent; }
+            if (sortState.direction === 'asc') return valA - valB;
+            return valB - valA;
+        });
+        const portTable = document.getElementById('port-table-body');
+        portTable.innerHTML = '';
+        ports.forEach(p => {
+            let cpuClass = p.cpu_percent > 50 ? 'text-red-600 font-bold' : '';
+            let memClass = p.mem_percent > 50 ? 'text-purple-600 font-bold' : '';
+            portTable.innerHTML += `<tr class="bg-white border-b hover:bg-gray-50"><td class="px-4 py-2 font-bold text-blue-600">${p.port}</td><td class="px-4 py-2 text-gray-500">${p.pid}</td><td class="px-4 py-2 font-medium text-gray-900 truncate max-w-xs" title="${p.process_name}">${p.process_name}</td><td class="px-4 py-2 text-xs ${cpuClass}">${p.cpu_percent}%</td><td class="px-4 py-2 text-xs ${memClass}">${p.mem_percent}%</td></tr>`;
+        });
+        ['port', 'cpu', 'mem'].forEach(f => {
+            const th = document.getElementById(`th-${f}`);
+            th.classList.remove('sort-asc', 'sort-desc');
+            if (sortState.field === f) th.classList.add(sortState.direction === 'asc' ? 'sort-asc' : 'sort-desc');
+        });
+    }
+
+    // --- 新增：进程列表排序函数 ---
+    function toggleProcessSort(field) {
+        if (processSortState.field === field) {
+            processSortState.direction = processSortState.direction === 'desc' ? 'asc' : 'desc';
+        } else {
+            processSortState.field = field;
+            processSortState.direction = 'desc';
+        }
+        if (latestMetricsData && latestMetricsData.top_processes) {
+            renderProcessTable(latestMetricsData.top_processes);
+        }
+    }
+
+    function renderProcessTable(processes) {
+        if (!processes) return;
+        const tbody = document.getElementById('proc-table-body');
+        tbody.innerHTML = '';
+
+        // 排序逻辑 (仅针对前端已获取的 Top 20 数据)
+        let sortedProcs = [...processes];
+        sortedProcs.sort((a, b) => {
+            let valA = processSortState.field === 'cpu' ? a.cpu_percent : a.mem_percent;
+            let valB = processSortState.field === 'cpu' ? b.cpu_percent : b.mem_percent;
+            return processSortState.direction === 'asc' ? valA - valB : valB - valA;
+        });
+
+        // 更新表头样式
+        ['cpu', 'mem'].forEach(f => {
+            const th = document.getElementById(`th-proc-${f}`);
+            if(th) {
+                th.classList.remove('sort-asc', 'sort-desc');
+                if (processSortState.field === f) {
+                    th.classList.add(processSortState.direction === 'asc' ? 'sort-asc' : 'sort-desc');
+                }
+            }
+        });
+
+        sortedProcs.forEach(p => {
+            // 高亮显示资源占用高的进程
+            let cpuClass = p.cpu_percent > 50 ? 'text-red-600 font-bold' : (p.cpu_percent > 20 ? 'text-orange-600' : 'text-gray-900');
+            let memClass = p.mem_percent > 50 ? 'text-purple-600 font-bold' : 'text-gray-900';
+
+            tbody.innerHTML += `
+                <tr class="bg-white border-b hover:bg-gray-50 transition-colors">
+                    <td class="px-4 py-2 text-gray-500 font-mono text-xs">${p.pid}</td>
+                    <td class="px-4 py-2 text-gray-600 text-sm">${p.user || '-'}</td>
+                    <td class="px-4 py-2 font-medium text-gray-800 truncate max-w-xs text-sm" title="${p.name}">
+                        ${p.name}
+                    </td>
+                    <td class="px-4 py-2 text-gray-500 text-xs">
+                        <span class="bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200">${p.status}</span>
+                    </td>
+                    <td class="px-4 py-2 text-right text-sm ${cpuClass}">${p.cpu_percent}%</td>
+                    <td class="px-4 py-2 text-right text-sm ${memClass}">${p.mem_percent}%</td>
+                    <td class="px-4 py-2 text-right text-sm text-gray-600 font-mono">${p.mem_rss_mb}</td>
+                </tr>
+            `;
+        });
+    }
+
+    async function changeTimeRange() {
+        const select = document.getElementById('timeRange');
+        currentDurationSeconds = parseInt(select.value);
+        await loadHistoryData();
+    }
+
+    // 解析并更新进程 CPU 图表
+    function updateProcessCpuChartWithHistory(history) {
+        // 1. 找出历史数据中出现过的所有进程，并计算其"最大CPU"以选出最活跃的 Top 10
+        const procMap = {}; // "pid-name" -> maxCpu
+        history.forEach(d => {
+            if (d.top_processes) {
+                d.top_processes.forEach(p => {
+                    const key = `${p.name} (${p.pid})`;
+                    if (!procMap[key]) procMap[key] = 0;
+                    if (p.cpu_percent > procMap[key]) procMap[key] = p.cpu_percent;
+                });
+            }
+        });
+
+        // 2. 排序取前 10 个 key
+        const topKeys = Object.keys(procMap).sort((a, b) => procMap[b] - procMap[a]).slice(0, 10);
+
+        // 3. 重置数据集
+        processTrendChart.data.datasets = topKeys.map(key => ({
+            label: key,
+            borderColor: getColor(key), // 生成随机固定颜色
+            backgroundColor: 'transparent',
+            borderWidth: 2,
+            data: [],
+            pointRadius: 0,
+            tension: 0.4
+        }));
+        processTrendChart.data.labels = [];
+
+        // 4. 填充数据
+        history.forEach(d => {
+            const timeLabel = new Date(d.timestamp * 1000).toLocaleTimeString();
+            processTrendChart.data.labels.push(timeLabel);
+
+            processTrendChart.data.datasets.forEach(ds => {
+                const key = ds.label;
+                let val = null; // 默认空值
+                // 在当前时间点查找该进程
+                if (d.top_processes) {
+                    const found = d.top_processes.find(p => `${p.name} (${p.pid})` === key);
+                    if (found) val = found.cpu_percent;
+                }
+                ds.data.push(val);
+            });
+        });
+
+        processTrendChart.update();
+    }
+
+    // 解析并更新进程 内存 图表
+    function updateProcessMemChartWithHistory(history) {
+        // 1. 找出历史数据中出现过的所有进程，并计算其"最大MEM"以选出最耗内存的 Top 10
+        const procMap = {}; // "pid-name" -> maxMem
+        history.forEach(d => {
+            if (d.top_processes) {
+                d.top_processes.forEach(p => {
+                    const key = `${p.name} (${p.pid})`;
+                    if (!procMap[key]) procMap[key] = 0;
+                    if (p.mem_percent > procMap[key]) procMap[key] = p.mem_percent;
+                });
+            }
+        });
+
+        // 2. 排序取前 10 个 key
+        const topKeys = Object.keys(procMap).sort((a, b) => procMap[b] - procMap[a]).slice(0, 10);
+
+        // 3. 重置数据集
+        processMemTrendChart.data.datasets = topKeys.map(key => ({
+            label: key,
+            borderColor: getColor(key),
+            backgroundColor: 'transparent',
+            borderWidth: 2,
+            data: [],
+            pointRadius: 0,
+            tension: 0.4
+        }));
+        processMemTrendChart.data.labels = [];
+
+        // 4. 填充数据
+        history.forEach(d => {
+            const timeLabel = new Date(d.timestamp * 1000).toLocaleTimeString();
+            processMemTrendChart.data.labels.push(timeLabel);
+
+            processMemTrendChart.data.datasets.forEach(ds => {
+                const key = ds.label;
+                let val = null;
+                if (d.top_processes) {
+                    const found = d.top_processes.find(p => `${p.name} (${p.pid})` === key);
+                    if (found) val = found.mem_percent;
+                }
+                ds.data.push(val);
+            });
+        });
+
+        processMemTrendChart.update();
+    }
+
+
+    async function loadHistoryData() {
+        try {
+            const res = await fetch(`/api/history?seconds=${currentDurationSeconds}`);
+            const history = await res.json();
+            if (!history || history.length === 0) return;
+            [trendChart, ioChart, netTrendChart, netUploadBarChart].forEach(c => { c.data.labels = []; c.data.datasets.forEach(ds => ds.data = []); });
+            diskUsageChart.data.labels = []; diskUsageChart.data.datasets = [];
+
+            const sampleDisks = history[history.length - 1].disks || [];
+            sampleDisks.forEach((d, index) => {
+                const color = diskColors[index % diskColors.length];
+                diskUsageChart.data.datasets.push({ label: d.path, borderColor: color, backgroundColor: color + '10', borderWidth: 2, data: [], tension: 0.4, fill: false, pointRadius: 0 });
+            });
+            history.forEach(d => {
+                const timeLabel = new Date(d.timestamp * 1000).toLocaleTimeString();
+                trendChart.data.labels.push(timeLabel); trendChart.data.datasets[0].data.push(d.cpu_percent); trendChart.data.datasets[1].data.push(d.mem_percent);
+                ioChart.data.labels.push(timeLabel); ioChart.data.datasets[0].data.push(d.disk_read_kb_s); ioChart.data.datasets[1].data.push(d.disk_write_kb_s);
+                netTrendChart.data.labels.push(timeLabel); netTrendChart.data.datasets[0].data.push(d.net_rx_kb_s); netTrendChart.data.datasets[1].data.push(d.net_tx_kb_s);
+                netUploadBarChart.data.labels.push(timeLabel); netUploadBarChart.data.datasets[0].data.push(d.net_tx_kb_s);
+                diskUsageChart.data.labels.push(timeLabel);
+                if (d.disks) { d.disks.forEach(diskInfo => { const dataset = diskUsageChart.data.datasets.find(ds => ds.label === diskInfo.path); if (dataset) dataset.data.push(diskInfo.used_percent); }); }
+            });
+            [trendChart, ioChart, diskUsageChart, netTrendChart, netUploadBarChart].forEach(c => c.update());
+
+            // 更新进程历史图表
+            updateProcessCpuChartWithHistory(history);
+            updateProcessMemChartWithHistory(history);
+
+        } catch (e) { console.error("Failed to load history:", e); }
+    }
+
+    async function updateLive() {
+        try {
+            const response = await fetch('/api/metrics');
+            const data = await response.json();
+            latestMetricsData = data;
+            updateStatusCards(data);
+            const timeLabel = new Date(data.timestamp * 1000).toLocaleTimeString();
+            const pushAndShift = (chart, label, values) => {
+                chart.data.labels.push(label);
+                values.forEach((val, i) => { if (chart.data.datasets[i]) chart.data.datasets[i].data.push(val); });
+                const maxPoints = currentDurationSeconds / 15 + 5;
+                if (chart.data.labels.length > maxPoints) { chart.data.labels.shift(); chart.data.datasets.forEach(ds => ds.data.shift()); }
+                chart.update();
+            };
+            pushAndShift(trendChart, timeLabel, [data.cpu_percent, data.mem_percent]);
+            pushAndShift(ioChart, timeLabel, [data.disk_read_kb_s, data.disk_write_kb_s]);
+            pushAndShift(netTrendChart, timeLabel, [data.net_rx_kb_s, data.net_tx_kb_s]);
+            pushAndShift(netUploadBarChart, timeLabel, [data.net_tx_kb_s]);
+            const diskValues = [];
+            diskUsageChart.data.datasets.forEach(ds => { const diskInfo = data.disks.find(d => d.path === ds.label); diskValues.push(diskInfo ? diskInfo.used_percent : null); });
+            if (diskUsageChart.data.datasets.length === 0 && data.disks.length > 0) {
+                data.disks.forEach((d, index) => { const color = diskColors[index % diskColors.length]; diskUsageChart.data.datasets.push({ label: d.path, borderColor: color, borderWidth: 2, data: [d.used_percent], tension: 0.4, pointRadius: 0 }); });
+                diskUsageChart.data.labels.push(timeLabel); diskUsageChart.update();
+            } else { pushAndShift(diskUsageChart, timeLabel, diskValues); }
+
+            // --- 实时更新进程图表 (CPU) ---
+            processTrendChart.data.labels.push(timeLabel);
+            const maxPoints = currentDurationSeconds / 15 + 5;
+            if (processTrendChart.data.labels.length > maxPoints) { processTrendChart.data.labels.shift(); }
+
+            processTrendChart.data.datasets.forEach(ds => {
+                const key = ds.label;
+                let val = null;
+                if (data.top_processes) {
+                    const found = data.top_processes.find(p => `${p.name} (${p.pid})` === key);
+                    if (found) val = found.cpu_percent;
+                }
+                ds.data.push(val);
+                if (ds.data.length > maxPoints) ds.data.shift();
+            });
+            processTrendChart.update();
+
+            // --- 实时更新进程图表 (Mem) ---
+            processMemTrendChart.data.labels.push(timeLabel);
+            if (processMemTrendChart.data.labels.length > maxPoints) { processMemTrendChart.data.labels.shift(); }
+
+            processMemTrendChart.data.datasets.forEach(ds => {
+                const key = ds.label;
+                let val = null;
+                if (data.top_processes) {
+                    const found = data.top_processes.find(p => `${p.name} (${p.pid})` === key);
+                    if (found) val = found.mem_percent;
+                }
+                ds.data.push(val);
+                if (ds.data.length > maxPoints) ds.data.shift();
+            });
+            processMemTrendChart.update();
+
+        } catch (error) { console.error('Error fetching live metrics:', error); }
+    }
+
+    function updateStatusCards(data) {
+        document.getElementById('info-hostname').textContent = data.hostname;
+        document.getElementById('info-os').textContent = data.os;
+        document.getElementById('info-arch').textContent = data.arch;
+        document.getElementById('info-cpu-model').textContent = data.cpu_model;
+        document.getElementById('info-cpu-cores').textContent = data.cpu_physical_cores;
+        document.getElementById('info-mem-total').textContent = data.mem_total_mb;
+        document.getElementById('info-proc-count').textContent = data.process_count;
+        document.getElementById('header-uptime').textContent = formatUptime(data.uptime_seconds);
+        document.getElementById('label-cpu-cores').textContent = data.cpu_physical_cores + ' P / ' + data.cpu_logical_cores + ' L Cores';
+        document.getElementById('cpu-percent').textContent = data.cpu_percent + '%';
+        document.getElementById('cpu-bar').style.width = data.cpu_percent + '%';
+        document.getElementById('cpu-wait').textContent = data.cpu_iowait_percent + '%';
+        document.getElementById('cpu-sys').textContent = data.cpu_system_percent + '%';
+        document.getElementById('mem-percent').textContent = data.mem_percent + '%';
+        document.getElementById('mem-bar').style.width = data.mem_percent + '%';
+        document.getElementById('mem-used').textContent = data.mem_used_mb;
+        document.getElementById('mem-total').textContent = data.mem_total_mb;
+        document.getElementById('mem-cached').textContent = data.mem_cached_mb;
+        document.getElementById('swap-percent').textContent = data.swap_percent + '%';
+        document.getElementById('load-1').textContent = data.load_1.toFixed(2);
+        document.getElementById('load-5').textContent = data.load_5.toFixed(2);
+        document.getElementById('load-15').textContent = data.load_15.toFixed(2);
+        document.getElementById('net-rx').textContent = data.net_rx_kb_s + ' KB/s';
+        document.getElementById('net-tx').textContent = data.net_tx_kb_s + ' KB/s';
+        document.getElementById('tcp-estab').textContent = data.tcp_state_counts['ESTABLISHED'] || 0;
+        const diskTable = document.getElementById('disk-table-body');
+        diskTable.innerHTML = '';
+        data.disks.forEach(d => {
+            let barColor = 'bg-blue-600'; let textColor = 'text-xs';
+            if (d.used_percent >= 90) { barColor = 'bg-red-600'; textColor = 'text-xs text-red-600 font-bold'; } else if (d.used_percent >= 80) { barColor = 'bg-orange-500'; textColor = 'text-xs text-orange-600 font-bold'; }
+            diskTable.innerHTML += `<tr class="bg-white border-b"><td class="px-2 py-2 truncate" title="${d.path}">${d.path}</td><td class="px-2 py-2">${d.total_gb} GB</td><td class="px-2 py-2"><div class="w-full bg-gray-200 rounded-full h-1.5"><div class="${barColor} h-1.5 rounded-full" style="width: ${d.used_percent}%"></div></div><span class="${textColor}">${d.used_percent}%</span></td></tr>`;
+        });
+        renderPortsTable();
+
+        // 新增：调用渲染进程表
+        renderProcessTable(data.top_processes);
+    }
+
+    function formatUptime(seconds) {
+        const d = Math.floor(seconds / (3600*24)); const h = Math.floor(seconds % (3600*24) / 3600); const m = Math.floor(seconds % 3600 / 60);
+        return `${d}d ${h}h ${m}m`;
+    }
+
+    initPage(); // Load initial config (title)
+    loadHistoryData();
+    setInterval(updateLive, 3000);
+</script>
+</body>
+</html>

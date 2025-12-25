@@ -1,0 +1,30 @@
+{
+  "app_name": "Pengfei监控探针",
+  "retention_days": 30,
+  "server_port": 8080,
+  "db_path": "monitor.db",
+  "run_log_path": "run.log",
+  "send_log_path": "send.log",
+  "alert": {
+    "enable": false,
+    "enable_recovery": true,
+    "cpu_threshold": 80,
+    "mem_threshold": 80,
+    "disk_threshold": 85,
+    "cooldown_seconds": 300,
+    "trigger_template": "【报警】\n主机: {{hostname}}\n时间: {{time}}\n内容: {{type}} 使用率过高: {{value}}% (阈值: {{threshold}}%)",
+    "recover_template": "【恢复】\n主机: {{hostname}}\n时间: {{time}}\n内容: {{type}} 已恢复正常: {{value}}% (阈值: {{threshold}}%)"
+  },
+  "notify": {
+    "enable_email": false,
+    "email_host": "smtp.qq.com",
+    "email_port": 587,
+    "email_user": "",
+    "email_pass": "",
+    "email_to": "",
+    "enable_dingtalk": false,
+    "dingtalk_token": "",
+    "enable_feishu": false,
+    "feishu_webhook": ""
+  }
+}
